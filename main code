@@ -1,0 +1,212 @@
+##### IMPORTING FUNCTIONS
+import numpy as np
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+# for animations --Lewis
+from vpython import sphere, cylinder, color, rate, vector, canvas, arrow
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.animation as animation
+
+from IPython.display import Image # needed to import a remote image later --Lewis
+
+
+##### DEFINING CONSTANTS
+# mixing factors (converted from degrees to radians)
+th12 = np.radians(33.82)
+th23 = np.radians(48.3)
+th13 = np.radians(8.61)
+delta_CP = np.radians(222)
+
+# mass differences
+dm21_sq = 7.53*10**(-5) # eV^2
+dm32_sq = 2.52*10**(-3) # eV^2
+
+# mass eigenstates
+m1 = 0.75 # eV
+m2 = np.sqrt(m1*m1 + dm21_sq) # eV
+m3 = np.sqrt(m2*m2 + dm32_sq) # eV
+
+#calculate third mass difference squared
+dm31_sq = m3*m3 - m1*m1 # eV^2
+
+# set energy values
+E_sun_pp = 4*10**5 # eV 
+# note: add energy values from other reactions, e.g. atmospheric, nuclear reactor
+
+# important constants:
+# speed of light
+c = 299792.458 # km s^-1 
+# Planck constant
+hbar = 6.582119569*10**(-16) # eV*s
+# Astronomical unit (i.e. the distance between the Sun and the Earth)
+AU = 149597870.700 # km
+
+
+
+
+##### 2-FLAVOURS SIMULATION
+
+#rotational matrix for 2-flavours case
+th2f = th12 # set angle for 2-flavours (arbitrary)
+rot_mat_2f = np.array([[np.cos(th2f), np.sin(th2f)], [-np.sin(th2f), np.cos(th2f)]])
+
+mar_2f = np.array([m1, m2]) #mass eigenstates vector
+
+nar_2f = np.dot(rot_mat_2f, mar_2f) #neutrino eigenstates vector
+en_2f = nar_2f[0] #electron neutrino 
+mn_2f = nar_2f[1] #muon neutrino
+
+
+def time_evo_2f(m1, m2, E, L):
+    """Time evolution function, starting from an electron neutrino or a muon neutrino;
+    Takes as inputs two neutrino mass eigenstates m1 and m2, the energy at which the neutrino is produced (in eV), 
+    and the distance travelled L (in kilometers);
+    The speed of the neutrino is approximated to be the speed of light;
+    Returns an array whose first element is the new neutrino state formed by the superposition of the two neutrino 
+    mass eigenstates if we start with an electron neutrino,
+    the second element is the same but starting with a muon neutrino"""
+    
+    #find the energy of the two mass eigenstates
+    E1 = np.sqrt(E*E + m1*m1)
+    E2 = np.sqrt(E*E + m2*m2)
+    
+    #find time passed
+    t = L / c
+    
+    #new mass eigenstates vector
+    mar_time_evo = np.array([m1*np.real(np.exp(-E1*t*1j/hbar)), m2*np.real(np.exp(-E2*t*1j/hbar))])
+    
+    #calculate neutrino state
+    n = np.dot(rot_mat_2f, mar_time_evo)
+    
+    return n
+
+
+# test the function
+test2f = time_evo_2f(m1, m2, E_sun_pp, 5000)
+print("Starting with electron neutrino:", test2f[0], "or with muon neutrino:", test2f[1])
+
+
+# plot neutrino state against distance
+# assume starting with electron neutrino
+arL = np.linspace(0,AU,200)
+ny = time_evo_2f(m1, m2, E_sun_pp, arL)
+plt.plot(arL, ny[0])
+plt.xlabel("distance")
+plt.ylabel("neutrino state")
+plt.title("2-flavour neutrino oscillations with distance")
+
+#add lines representing electron and muon neutrinos
+aren = np.ones(len(arL))*en_2f
+armn = np.ones(len(arL))*mn_2f
+plt.plot(arL, aren, label="electron neutrino")
+plt.plot(arL, armn, label="muon neutrino")
+plt.legend()
+
+
+
+
+##### 3-FLAVOURS CASE
+
+# mass eigenstates vector
+mar_3f = np.array([m1, m2, m3]) 
+
+#rotational matrix
+U1 = np.array([[1, 0, 0], [0, np.cos(th23), np.sin(th23)], [0, -np.sin(th23), np.cos(th23)]]) #first matrix
+U2 = np.real(np.array([[np.cos(th13), 0, np.sin(th13)*np.exp(-1j*delta_CP)], [0, 1, 0], 
+               [-np.sin(th13)*np.exp(1j*delta_CP), 0, np.cos(th13)]])) #second matrix
+U3 = np.array([[np.cos(th12), np.sin(th12), 0], [np.sin(th12), np.cos(th12), 0], [0, 0, 1]]) #third matrix
+rot_mat_3f = np.dot(U1, np.dot(U2, U3)) #final matrix
+
+# neutrino eigenstates vector
+nar_3f = np.dot(rot_mat_3f, mar_3f)
+en = nar_3f[0]
+mn = nar_3f[1]
+tn = nar_3f[2]
+print(en, mn, tn)
+
+#check that the value obtained for the electron neutrino is within experimental bounds
+assert en <= 1.1, "Error: value for electron neutrino above experimental threshold of 1.1 eV"
+
+
+def time_evo_3f(m1, m2, m3, E, L):
+    """Time evolution function, starting from an electron neutrino, a muon neutrino or a tau neutrino;
+    Takes as inputs the three neutrino mass eigenstates m1, m2 and m3, the energy at which the neutrino is produced (in eV), 
+    and the distance travelled L (in kilometers);
+    The speed of the neutrino is approximated to be the speed of light;
+    Returns an array whose first element is the new neutrino state formed by the superposition of the two neutrino 
+    mass eigenstates if we start with an electron neutrino,
+    the second and third elements are the same but starting with a muon neutrino or a tau neutrino respectively"""
+    
+    #find the energy of the two mass eigenstates
+    E1 = np.sqrt(E*E + m1*m1)
+    E2 = np.sqrt(E*E + m2*m2)
+    E3 = np.sqrt(E*E + m3*m3)
+    
+    #find time passed
+    t = L / c
+    
+    #new mass eigenstates vector
+    mar_time_evo = np.array([m1*np.real(np.exp(-E1*t*1j/hbar)), m2*np.real(np.exp(-E2*t*1j/hbar)), 
+                             m3*np.real(np.exp(-E3*t*1j/hbar))])
+
+    #calculate neutrino state
+    n = np.dot(rot_mat_3f, mar_time_evo)
+    
+    return n
+
+
+# test the function
+test3f = time_evo_3f(m1, m2, m3, E_sun_pp, 5000)
+print("Starting with electron neutrino:", test3f[0], "or with muon neutrino:", test3f[1], "or with tau neutrino:", test3f[2])
+
+
+# assume starting with electron neutrino
+ny_3f = time_evo_3f(m1, m2, m3, E_sun_pp, arL)
+plt.plot(arL, ny_3f[0])
+plt.xlabel("distance")
+plt.ylabel("neutrino state")
+plt.title("3-flavour neutrino oscillations with distance")
+
+#add lines representing electron and muon neutrinos
+aren = np.ones(len(arL))*en
+armn = np.ones(len(arL))*mn
+artn = np.ones(len(arL))*tn
+plt.plot(arL, aren, label="electron neutrino")
+plt.plot(arL, armn, label="muon neutrino")
+plt.plot(arL, artn, label="tau neutrino")
+plt.legend()
+
+
+
+
+##### PROBABILITY FUNCTION
+
+def prob_transition(alpha, beta, E, L):
+    """Calculates the probability of a transition between an initial neutrino alpha to a neutrino beta
+    Takes as inputs the initial and final neutrino flavours alpha and beta, 
+    the energy at which the neutrino is produced E (in eV),
+    and the distance travelled by the particle L (in km)
+    Returns the probability of the transition"""
+    
+    if (alpha == "electron" and beta == "muon") or (alpha == "muon" and beta == "electron"): 
+        ar = np.array([th12, dm21_sq])
+    elif (alpha == "electron" and beta == "tau") or (alpha == "tau" and beta == "electron"):
+        ar = np.array([th13, dm31_sq])
+    elif (alpha == "muon" and beta == "tau") or (alpha == "tau" and beta == "muon"):
+        ar = np.array([th23, dm32_sq])
+    else:
+        return "Error"
+        
+    arg = 1.27*ar[1]*L/E
+        
+    P = np.sin(2*ar[0])*np.sin(2*ar[0])*np.sin(arg)*np.sin(arg)
+    
+    return P
+
+#test:
+pmn_test = prob_transition("electron", "muon", E_sun_pp, AU)*100
+ptn_test = prob_transition("electron", "tau", E_sun_pp, AU)*100
+print('The probability that the electron neutrino becomes a muon neutrino is %.2f' % pmn_test, '%')
+print('The probability that the electron neutrino becomes a tau neutrino is %.2f' % ptn_test, '%')
